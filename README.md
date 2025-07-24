@@ -70,6 +70,157 @@ ________________________________________________________________________________
 
 ________________________________________________________________________________________________________________________________
 
+Включил Trigger: <br>
+
+<img width="1060" height="456" alt="image" src="https://github.com/user-attachments/assets/251f5677-ace0-47b6-8f5a-7ae0593800e8" /> <br>
+
+_________________________________________________________________________________________________________________________________
+
+Создал Pipeline
+
+```
+pipeline {
+    agent { label 'agent' }
+
+    environment {
+        DOCKER_REGISTRY = 'vazik1910/taska'
+        GIT_REPO = 'git@github.com:vazikk/fortask23.git'
+        GIT_CREDENTIALS_ID = 'git-ssh'
+        DOCKER_CREDENTIALS_ID = 'docker-credentials'
+        DEPLOY_SERVER = '3.91.217.193' // Замените на IP или хост вашего инстанса
+        DEPLOY_USER = 'ubuntu' // Пользователь для подключения к инстансу
+        SSH_CREDENTIALS_ID = 'ssh-key' // ID SSH-ключей в Jenkins
+        DOCKER_HUB_PASSWORD = credentials('docker-hub-password') // Пароль от Docker Hub
+    }
+
+    stages {
+        stage('Checkout') {
+            steps {
+                git branch: 'main', url: "${GIT_REPO}", credentialsId: "${GIT_CREDENTIALS_ID}"
+            }
+        }
+
+        stage('Build') {
+            steps {
+                script {
+                    def appImage = docker.build("${DOCKER_REGISTRY}:${env.BUILD_ID}", ".")
+                }
+            }
+        }
+
+        stage('Push to Docker Hub') {
+            steps {
+                script {
+                    docker.withRegistry('https://index.docker.io/v1/', "${DOCKER_CREDENTIALS_ID}") {
+                        docker.image("${DOCKER_REGISTRY}:${env.BUILD_ID}").push()
+                    }
+                }
+            }
+        }
+
+        stage('Prepare Remote Instance') {
+            steps {
+                script {
+                    sshagent(credentials: ["${SSH_CREDENTIALS_ID}"]) {
+                        // Проверяем и устанавливаем Docker, если нужно
+                        sh """
+                            ssh -o StrictHostKeyChecking=no ${DEPLOY_USER}@${DEPLOY_SERVER} '
+                                # Проверяем наличие Docker
+                                if ! command -v docker &> /dev/null; then
+                                    echo "Устанавливаем Docker..."
+                                    sudo apt-get update -qq
+                                    sudo apt-get install -y -qq apt-transport-https ca-certificates curl software-properties-common
+                                    curl -fsSL https://download.docker.com/linux/ubuntu/gpg | sudo apt-key add -
+                                    sudo add-apt-repository "deb [arch=amd64] https://download.docker.com/linux/ubuntu \$(lsb_release -cs) stable"
+                                    sudo apt-get update -qq
+                                    sudo apt-get install -y -qq docker-ce docker-ce-cli containerd.io
+                                    sudo usermod -aG docker ${DEPLOY_USER}
+                                fi
+
+                                # Проверяем версию Docker
+                                docker --version
+                            '
+                        """
+                    }
+                }
+            }
+        }
+
+        stage('Deploy to Instance') {
+            steps {
+                script {
+                    sshagent(credentials: ["${SSH_CREDENTIALS_ID}"]) {
+                        sh """
+                            ssh -o StrictHostKeyChecking=no ${DEPLOY_USER}@${DEPLOY_SERVER} '
+                                # Логинимся в Docker Hub
+                                echo "${DOCKER_HUB_PASSWORD}" | docker login -u ${DOCKER_REGISTRY.split('/')[0]} --password-stdin
+
+                                # Останавливаем и удаляем старый контейнер
+                                docker stop myapp || true
+                                docker rm myapp || true
+
+                                # Удаляем старый образ (опционально)
+                                docker rmi ${DOCKER_REGISTRY}:latest || true
+
+                                # Скачиваем новый образ
+                                docker pull ${DOCKER_REGISTRY}:${env.BUILD_ID}
+
+                                # Запускаем контейнер
+                                docker run -d --name myapp -p 80:80 ${DOCKER_REGISTRY}:${env.BUILD_ID}
+
+                                # Проверяем, что контейнер запустился
+                                docker ps | grep myapp
+                            '
+                        """
+                    }
+                }
+            }
+        }
+
+        stage('Verify Deployment') {
+            steps {
+                script {
+                    // Простая проверка, что приложение доступно
+                    sh "curl -I http://${DEPLOY_SERVER} || true"
+                }
+            }
+        }
+    }
+
+    post {
+        always {
+            cleanWs()
+        }
+        success {
+            echo "Приложение успешно развернуто на ${DEPLOY_SERVER}"
+        }
+        failure {
+            echo "Ошибка при развертывании на ${DEPLOY_SERVER}"
+        }
+    }
+}
+```
+
+____________________________________________________________________________________________________________________________
+
+Запустил Image и проверил работу: <br>
+
+ДО КООМИТА <br>
+
+<img width="1137" height="257" alt="image" src="https://github.com/user-attachments/assets/9be33ae3-1c8e-45ab-aa6c-39369f6b2f15" /> <br>
+
+
+______________________________________________________________________________________________________________________________
+
+ПОСЛЕ КОММИТА <br>
+<img width="633" height="85" alt="image" src="https://github.com/user-attachments/assets/d009601d-a84c-4450-9839-fcf878003dfc" /> 
+
+<img width="431" height="178" alt="image" src="https://github.com/user-attachments/assets/96a74c92-7550-4718-9728-236698375205" />
+
+<img width="1372" height="266" alt="image" src="https://github.com/user-attachments/assets/740f7171-0869-4e06-ac88-1504d15dc85d" />
+
+
+
 
 
 
