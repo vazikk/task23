@@ -87,10 +87,10 @@ pipeline {
         GIT_REPO = 'git@github.com:vazikk/fortask23.git'
         GIT_CREDENTIALS_ID = 'git-ssh'
         DOCKER_CREDENTIALS_ID = 'docker-credentials'
-        DEPLOY_SERVER = '3.91.217.193' // Замените на IP или хост вашего инстанса
-        DEPLOY_USER = 'ubuntu' // Пользователь для подключения к инстансу
-        SSH_CREDENTIALS_ID = 'ssh-key' // ID SSH-ключей в Jenkins
-        DOCKER_HUB_PASSWORD = credentials('docker-hub-password') // Пароль от Docker Hub
+        DEPLOY_SERVER = '3.91.217.193' 
+        DEPLOY_USER = 'ubuntu' 
+        SSH_CREDENTIALS_ID = 'ssh-key' 
+        DOCKER_HUB_PASSWORD = credentials('docker-hub-password') 
     }
 
     stages {
@@ -122,10 +122,10 @@ pipeline {
             steps {
                 script {
                     sshagent(credentials: ["${SSH_CREDENTIALS_ID}"]) {
-                        // Проверяем и устанавливаем Docker, если нужно
+                        
                         sh """
                             ssh -o StrictHostKeyChecking=no ${DEPLOY_USER}@${DEPLOY_SERVER} '
-                                # Проверяем наличие Docker
+                               
                                 if ! command -v docker &> /dev/null; then
                                     echo "Устанавливаем Docker..."
                                     sudo apt-get update -qq
@@ -137,7 +137,7 @@ pipeline {
                                     sudo usermod -aG docker ${DEPLOY_USER}
                                 fi
 
-                                # Проверяем версию Docker
+                               
                                 docker --version
                             '
                         """
@@ -152,23 +152,23 @@ pipeline {
                     sshagent(credentials: ["${SSH_CREDENTIALS_ID}"]) {
                         sh """
                             ssh -o StrictHostKeyChecking=no ${DEPLOY_USER}@${DEPLOY_SERVER} '
-                                # Логинимся в Docker Hub
+                                
                                 echo "${DOCKER_HUB_PASSWORD}" | docker login -u ${DOCKER_REGISTRY.split('/')[0]} --password-stdin
 
-                                # Останавливаем и удаляем старый контейнер
+                                
                                 docker stop myapp || true
                                 docker rm myapp || true
 
-                                # Удаляем старый образ (опционально)
+                                
                                 docker rmi ${DOCKER_REGISTRY}:latest || true
 
-                                # Скачиваем новый образ
+                                
                                 docker pull ${DOCKER_REGISTRY}:${env.BUILD_ID}
 
-                                # Запускаем контейнер
+                                
                                 docker run -d --name myapp -p 80:80 ${DOCKER_REGISTRY}:${env.BUILD_ID}
 
-                                # Проверяем, что контейнер запустился
+                                
                                 docker ps | grep myapp
                             '
                         """
@@ -180,7 +180,7 @@ pipeline {
         stage('Verify Deployment') {
             steps {
                 script {
-                    // Простая проверка, что приложение доступно
+                    
                     sh "curl -I http://${DEPLOY_SERVER} || true"
                 }
             }
